@@ -40,11 +40,13 @@ function display_help {
 # Add command-line arguments
 UBUNTU_VERSION=""
 ROS_DISTRO=""
+ZENOH=""
 while getopts "v:d:h" opt; do
   case $opt in
     v) UBUNTU_VERSION=$OPTARG ;;
     d) ROS_DISTRO=$OPTARG ;;
     h) display_help; exit 0 ;;
+    z) ZENOH=$OPTARG ;;
     \?) echo "Invalid option -$OPTARG" >&2; display_help; exit 1 ;;
   esac
 done
@@ -100,8 +102,13 @@ elif [ "$ROS_DISTRO" = "jazzy" ]; then
         DOCKERFILE="dockerfiles/ubuntu_22_jazzy_python_311_minimal.dockerfile"
         echo "Using Ubuntu 22.04 with ROS Jazzy"
     elif [ "$UBUNTU_VERSION" = "24.04" ]; then
-        DOCKERFILE="dockerfiles/ubuntu_24_jazzy_python_311_minimal.dockerfile" 
-        echo "Using Ubuntu 24.04 with ROS Jazzy"
+        if [ "$ZENOH" = "true" ]; then
+            DOCKERFILE="dockerfiles/ubuntu_24_jazzy_python_311_zenoh.dockerfile"
+            echo "Using Ubuntu 24.04 with ROS Jazzy and Zenoh"
+        else
+            DOCKERFILE="dockerfiles/ubuntu_24_jazzy_python_311_minimal.dockerfile"
+            echo "Using Ubuntu 24.04 with ROS Jazzy"
+        fi
     fi
 else
     echo "Unsupported ROS distro: $ROS_DISTRO"
