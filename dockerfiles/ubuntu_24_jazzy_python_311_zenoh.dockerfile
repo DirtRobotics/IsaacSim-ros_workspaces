@@ -163,7 +163,7 @@ RUN python3.11 -m pip install --ignore-installed "pybind11[global]"
 # Build core ROS 2 workspace
 RUN mkdir -p ${ROS_ROOT}/src && \
     cd ${ROS_ROOT} && \
-    rosinstall_generator --deps --rosdistro ${ROS_DISTRO} rosidl_runtime_c rcutils rcl rmw tf2 tf2_msgs common_interfaces geometry_msgs nav_msgs std_msgs rosgraph_msgs sensor_msgs vision_msgs rclpy ros2topic ros2pkg ros2doctor ros2run ros2node ros_environment ackermann_msgs example_interfaces rmw_zenoh_cpp > ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
+    rosinstall_generator --deps --rosdistro ${ROS_DISTRO} rosidl_runtime_c rcutils rcl rmw tf2 tf2_msgs common_interfaces geometry_msgs nav_msgs std_msgs rosgraph_msgs sensor_msgs vision_msgs rclpy ros2topic ros2pkg ros2doctor ros2run ros2node ros_environment ackermann_msgs example_interfaces > ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
     cat ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
     vcs import src < ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall
 
@@ -208,6 +208,10 @@ RUN /bin/bash -c "source ${ROS_ROOT}/install/setup.sh && cd build_ws && colcon b
     '-DPYTHON_EXECUTABLE=/usr/bin/python3.11' \
     '-DPYTHON_INCLUDE_DIR=/usr/include/python3.11' \
     '-DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.11.so'"
+
+# Install rmw_zenoh_cpp
+RUN apt update && apt install -y \
+    ros-${ROS_DISTRO}-rmw-zenoh-cpp
 
 # Default RMW: Zenoh
 ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
