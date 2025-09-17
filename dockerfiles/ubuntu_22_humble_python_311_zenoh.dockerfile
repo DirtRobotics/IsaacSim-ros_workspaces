@@ -1,9 +1,10 @@
-ARG BASE_IMAGE=ubuntu:24.04
+ARG BASE_IMAGE=ubuntu:22.04
 FROM ${BASE_IMAGE}
 
-ENV ROS_DISTRO=jazzy
-ENV ROS_ROOT=jazzy_ws
+ENV ROS_DISTRO=humble
+ENV ROS_ROOT=humble_ws
 ENV ROS_PYTHON_VERSION=3
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /workspace
@@ -17,6 +18,7 @@ RUN apt-get update && \
 		wget \
 		gnupg2 \
 		lsb-release
+
 
 # Upgrade installed packages
 RUN apt update && apt upgrade -y && apt clean
@@ -42,7 +44,6 @@ RUN curl -s https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
     python3.11 get-pip.py --force-reinstall && \
     rm get-pip.py
 
-# ROS 2 apt sources
 RUN wget https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc && apt-key add ros.asc
 RUN sh -c 'echo "deb [arch=$(dpkg --print-architecture)] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2-latest.list'
 
@@ -128,14 +129,14 @@ RUN apt update && apt install -y \
   libcunit1-dev \
   libacl1-dev \
   python3-empy \
-  libpython3-dev \
-  liblttng-ust-dev
+  libpython3-dev
 
-# Install correct empy version
+# Install the correct version of empy that is compatible with ROS 2 Humble
+# Uninstall any existing empy first, then install version 3.3.4 specifically
 RUN python3.11 -m pip uninstall -y em empy || true
 RUN python3.11 -m pip install empy==3.3.4
 
-RUN python3 -m pip install -U --ignore-installed \
+RUN python3 -m pip install -U \
   argcomplete \
   flake8-blind-except \
   flake8-builtins \
@@ -151,32 +152,34 @@ RUN python3 -m pip install -U --ignore-installed \
   lark
 
 RUN python3.11 -m pip uninstall numpy -y
-RUN python3.11 -m pip install --ignore-installed --upgrade pip
-RUN python3.11 -m pip install --ignore-installed numpy pybind11 PyYAML
+RUN python3.11 -m pip install --upgrade pip
+RUN python3.11 -m pip install numpy pybind11 PyYAML
 
 # Create symlinks for Python3.11 headers where CMake can find them
 RUN ln -sf /usr/include/python3.11 /usr/include/python3
 
 # Fix paths for pybind11
-RUN python3.11 -m pip install --ignore-installed "pybind11[global]"
+RUN python3.11 -m pip install "pybind11[global]"
 
-# Build core ROS 2 workspace
 RUN mkdir -p ${ROS_ROOT}/src && \
     cd ${ROS_ROOT} && \
     rosinstall_generator --deps --rosdistro ${ROS_DISTRO} rosidl_runtime_c rcutils rcl rmw tf2 tf2_msgs common_interfaces geometry_msgs nav_msgs std_msgs rosgraph_msgs sensor_msgs vision_msgs rclpy ros2topic ros2pkg ros2doctor ros2run ros2node ros_environment ackermann_msgs example_interfaces rmw_zenoh_cpp > ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
     cat ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall && \
     vcs import src < ros2.${ROS_DISTRO}.${ROS_PKG}.rosinstall
 
-# Patch rclpy to build with Python 3.11
+# Patch rclpy to ensure it builds with Python 3.11 - find the correct path first
 RUN find /workspace/${ROS_ROOT}/src -name rclpy -type d | xargs -I{} /bin/bash -c 'if [ -f {}/CMakeLists.txt ]; then \
+    echo "Patching {}/CMakeLists.txt"; \
     sed -i "s/include_directories(\${PYTHON_INCLUDE_DIRS})/include_directories(\/usr\/include\/python3.11)/" {}/CMakeLists.txt; \
     sed -i "s/\${PYTHON_LIBRARY}/python3.11/" {}/CMakeLists.txt; \
     fi'
 
 RUN rosdep init && rosdep update
 
+# Make sure PYTHONPATH includes the correct site-packages
 ENV PYTHONPATH=/usr/local/lib/python3.11/dist-packages
 
+# Use logging to help debug build issues
 RUN cd ${ROS_ROOT} && colcon build --cmake-args \
     "-DPython3_EXECUTABLE=/usr/bin/python3.11" \
     "-DPYTHON_EXECUTABLE=/usr/bin/python3.11" \
@@ -184,16 +187,24 @@ RUN cd ${ROS_ROOT} && colcon build --cmake-args \
     "-DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.11.so" \
     --merge-install
 
-# Compatibility libs
-RUN cp /usr/lib/x86_64-linux-gnu/libtinyxml2.so* /workspace/jazzy_ws/install/lib/ || true
-RUN cp /usr/lib/x86_64-linux-gnu/libssl.so* /workspace/jazzy_ws/install/lib/ || true
-RUN cp /usr/lib/x86_64-linux-gnu/libcrypto.so* /workspace/jazzy_ws/install/lib/ || true
+# Need these to maintain compatibility on non 20.04 systems
+RUN cp /usr/lib/x86_64-linux-gnu/libtinyxml2.so* /workspace/humble_ws/install/lib/ || true
+RUN cp /usr/lib/x86_64-linux-gnu/libssl.so* /workspace/humble_ws/install/lib/ || true
+RUN cp /usr/lib/x86_64-linux-gnu/libcrypto.so* /workspace/humble_ws/install/lib/ || true
 
-# Build secondary workspace
+# Next, build the additional workspace 
 RUN mkdir -p /workspace/build_ws/src
-COPY jazzy_ws/src /workspace/build_ws/src
+
+
+# Copy the source files only - don't copy any build artifacts
+COPY humble_ws/src /workspace/build_ws/src
+
+# Removing MoveIt packages from the internal ROS Python 3.11 library build as it uses standard interfaces already built above.
+# This is to ensure that the internal build is as minimal as possible. 
+# For the user facing MoveIt interface workflow, this package should be built with the rest of the workspace uisng the external ROS installation.
 RUN rm -rf /workspace/build_ws/src/moveit
 
+# Make sure we're in the right directory
 WORKDIR /workspace
 
 # Set up environment variables for Python 3.11
@@ -203,6 +214,7 @@ ENV Python3_EXECUTABLE=/usr/bin/python3.11
 ENV PYTHON_INCLUDE_DIR=/usr/include/python3.11
 ENV PYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.11.so
 
+# Build the workspace with Python 3.11
 RUN /bin/bash -c "source ${ROS_ROOT}/install/setup.sh && cd build_ws && colcon build --cmake-args \
     '-DPython3_EXECUTABLE=/usr/bin/python3.11' \
     '-DPYTHON_EXECUTABLE=/usr/bin/python3.11' \
