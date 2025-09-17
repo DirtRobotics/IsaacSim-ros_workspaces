@@ -27,6 +27,7 @@ function display_help {
   echo "Options:"
   echo "  -d DISTRO     Specify ROS2 distro (humble or jazzy)"
   echo "  -v VERSION    Specify Ubuntu version (22.04 or 24.04)"
+  echo "  -z ZENOH      Specify if Zenoh should be used (true or false)"
   echo "  -h            Display this help message"
   echo ""
   echo "Supported combinations:"
@@ -41,7 +42,7 @@ function display_help {
 UBUNTU_VERSION=""
 ROS_DISTRO=""
 ZENOH=""
-while getopts "v:d:h" opt; do
+while getopts "v:d:z:h" opt; do
   case $opt in
     v) UBUNTU_VERSION=$OPTARG ;;
     d) ROS_DISTRO=$OPTARG ;;
